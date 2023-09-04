@@ -1,0 +1,2 @@
+# logish
+Shell log library
