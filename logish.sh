@@ -22,25 +22,25 @@ declare -gA LOGISH_LEVELS=()
 declare -gA LOGISH_PARTS=()
 
 # Default Levels
-declare -gA LOGISH_LOG_TRACE
-declare -gA LOGISH_LOG_DEBUG
-declare -gA LOGISH_LOG_INFO
-declare -gA LOGISH_LOG_NOTICE
-declare -gA LOGISH_LOG_WARN
-declare -gA LOGISH_LOG_ERROR
 declare -gA LOGISH_LOG_FATAL
+declare -gA LOGISH_LOG_ERROR
+declare -gA LOGISH_LOG_WARN
+declare -gA LOGISH_LOG_NOTICE
+declare -gA LOGISH_LOG_INFO
+declare -gA LOGISH_LOG_DEBUG
+declare -gA LOGISH_LOG_TRACE
 
 # Default Parts
-declare -gA LOGISH_PART_FUNCTION
-declare -gA LOGISH_PART_TIMESTAMP
 declare -gA LOGISH_PART_LEVEL
+declare -gA LOGISH_PART_TIMESTAMP
+declare -gA LOGISH_PART_FUNCTION
 declare -gA LOGISH_PART_FILENAME
 declare -gA LOGISH_PART_LINENO
 declare -gA LOGISH_PART_MESSAGE
 
-declare -gf logish_part_function
-declare -gf logish_part_timestamp
 declare -gf logish_part_level
+declare -gf logish_part_timestamp
+declare -gf logish_part_function
 declare -gf logish_part_filename
 declare -gf logish_part_lineno
 declare -gf logish_part_message
@@ -56,7 +56,181 @@ declare -gf LOGISH_LOG_COMMAND
 LOGISH_DEFAULT_TEMPLATE="${LOGISH_DEFAULT_TEMPLATE:-":timestamp: :level: [:function:::lineno:] :message:"}"
 LOGISH_DEFAULT_TIME_FORMAT="${LOGISH_DEFAULT_TIME_FORMAT:-"%I:%M%p"}"
 
-# --- internal functions ----------------------------------------------
+# --- level definitions -
+
+LOGISH_LOG_FATAL=(
+  [code]=100  
+  [name]="FATAL"  
+  [template]="${LOGISH_FATAL_TEMPLATE:-$LOGISH_DEFAULT_TEMPLATE}"  
+  [color]="41"
+) 
+
+LOGISH_LOG_ERROR=(
+  [code]=200  
+  [name]="ERROR"  
+  [template]="${LOGISH_ERROR_TEMPLATE:-$LOGISH_DEFAULT_TEMPLATE}"  
+  [color]="31"
+) 
+
+LOGISH_LOG_WARN=(
+  [code]=300   
+  [name]="WARN"   
+  [template]="${LOGISH_WARN_TEMPLATE:-$LOGISH_DEFAULT_TEMPLATE}"   
+  [color]="33"
+) 
+
+LOGISH_LOG_NOTICE=(
+  [code]=400 
+  [name]="NOTICE"
+  [template]="${LOGISH_NOTICE_TEMPLATE:-$LOGISH_DEFAULT_TEMPLATE}" 
+  [color]=33
+) 
+
+LOGISH_LOG_INFO=(
+  [code]=500   
+  [name]="INFO"   
+  [template]="${LOGISH_INFO_TEMPLATE:-$LOGISH_DEFAULT_TEMPLATE}"   
+  [color]="37"
+)
+
+LOGISH_LOG_DEBUG=(
+  [code]=600  
+  [name]="DEBUG"  
+  [template]="${LOGISH_DEBUG_TEMPLATE:-$LOGISH_DEFAULT_TEMPLATE}"   
+  [color]="34"
+) 
+
+LOGISH_LOG_TRACE=(
+  [code]=700  
+  [name]="TRACE"  
+  [template]="${LOGISH_TRACE_TEMPLATE:-$LOGISH_DEFAULT_TEMPLATE}"   
+  [color]="94"
+)
+
+# --- part definitions -
+ 
+
+LOGISH_PART_LEVEL=(
+  [name]="level"
+  [function_name]="logish_part_level"
+  [function_args]="format"
+  [arg_format]="%-15s"
+)
+logish_part_level() {
+  local log_name=${1}
+  local log_color=${2}
+  local level_format=${3}
+  echo "\e[1;${log_color}m$(printf ${level_format} ${log_name})\e[0m"
+}
+
+LOGISH_PART_TIMESTAMP=(
+  [name]="timestamp"
+  [function_name]="logish_part_timestamp"
+  [function_args]="format"
+  [arg_format]="${LOGISH_DEFAULT_TIME_FORMAT}"
+)
+logish_part_timestamp() {
+  local log_name=${1}
+  local log_color=${2}
+  local time_format=${3}
+  local result=$(date +"${time_format}")
+  echo "${result}"
+}
+
+LOGISH_PART_FUNCTION=(
+  [name]="function"
+  [function_name]="logish_part_function"
+)
+logish_part_function() {
+  local log_name=${1}
+  local log_color=${2}
+  local function_name=""
+  if [[ -n $BASH_VERSION ]]; then
+    local parts="${#FUNCNAME[@]}"
+    function_name="${FUNCNAME[-1]}"
+  elif [[ -n $ZSH_VERSION ]]; then
+    function_name="${funcfiletrace[-1]}"
+  fi
+  echo "${function_name}"
+}
+
+LOGISH_PART_FILENAME=(
+  [name]="filename"
+  [function_name]="logish_part_filename"
+)
+logish_part_filename() {
+  local log_name=${1}
+  local log_color=${2}
+  local filename_name=""
+  if [[ -n $BASH_VERSION ]]; then
+    filename_name="$(basename ${BASH_SOURCE[4]})" 
+  elif [[ -n $ZSH_VERSION ]]; then
+    filename_name="$(basename ${funcfiletrace[5]%:*})"
+  fi
+  echo "${filename_name}"
+}
+
+LOGISH_PART_LINENO=(
+  [name]="lineno"
+  [function_name]="logish_part_lineno"
+)
+logish_part_lineno() {
+  local log_name=${1}
+  local log_color=${2}
+  local lineno=""
+  if [[ -n $BASH_VERSION ]]; then
+    lineno="${BASH_LINENO[3]}"
+  elif [[ -n $ZSH_VERSION ]]; then
+    lineno="${funcfiletrace[5]##*:}"
+  fi
+  echo "${lineno}"
+}
+
+LOGISH_PART_MESSAGE=(
+  [name]="message"
+  [function_name]="logish_part_message"
+)
+logish_part_message() {
+  local log_name=${1}
+  local log_color=${2}
+  local message=${@:3}
+  echo "${message}"
+}
+
+# --- spinner definition -
+
+SPINNER=(
+  [pid]=""
+  [function_start]="spinner_start"
+  [function_end]="spinner_end"
+  [chars]="◐,◓,◑,◒"
+)
+spinner_start() {
+  local steps=( $(LOGISH_split "," ${SPINNER[chars]}) )
+  local t=${#steps[@]}
+  local i=0
+  local n=$((t - 1))
+  
+  trap 'spinner_end; return' SIGINT 
+  trap 'spinner_end; return' SIGHUP SIGTERM
+  
+  printf '  '
+  while true; do
+    echo -en "\033[1D${steps[@]:$i:1}"
+    ((i++)) 
+    if [[ "$i" > "$n" ]]; then 
+      i=0 
+    fi 
+    sleep 0.2 
+  done
+}
+spinner_end() {
+  printf "\033[1D"
+  kill ${SPINNER[pid]} &>/dev/null
+  SPINNER[pid]=""
+} 
+
+# --- internal functions -
 
 function LOGISH_split() {
   local delimiter=${1}
@@ -170,193 +344,7 @@ function LOGISH_print_message() {
   echo -e "${line}"
 } 
 
-# --- part definitions ----------------------------------------------
- 
-LOGISH_PART_TIMESTAMP=(
-  [name]="timestamp"
-  [function_name]="logish_part_timestamp"
-  [function_args]="format"
-  [arg_format]="${LOGISH_DEFAULT_TIME_FORMAT}"
-)
-logish_part_timestamp() {
-  local log_name=${1}
-  local log_color=${2}
-  local time_format=${3}
-  local result=$(date +"${time_format}")
-  echo "${result}"
-}
-LOGISH_add_part "LOGISH_PART_TIMESTAMP"
-
-LOGISH_PART_LEVEL=(
-  [name]="level"
-  [function_name]="logish_part_level"
-  [function_args]="format"
-  [arg_format]="%-8s"
-)
-logish_part_level() {
-  local log_name=${1}
-  local log_color=${2}
-  local level_format=${3}
-  echo "\e[1;${log_color}m$(printf ${level_format} ${log_name})\e[0m"
-}
-LOGISH_add_part "LOGISH_PART_LEVEL"
-
-LOGISH_PART_FUNCTION=(
-  [name]="function"
-  [function_name]="logish_part_function"
-)
-logish_part_function() {
-  local log_name=${1}
-  local log_color=${2}
-  local function_name=""
-  if [[ -n $BASH_VERSION ]]; then
-    local parts="${#FUNCNAME[@]}"
-    function_name="${FUNCNAME[-1]}"
-  elif [[ -n $ZSH_VERSION ]]; then
-    function_name="${funcfiletrace[-1]}"
-  fi
-  echo "${function_name}"
-}
-LOGISH_add_part "LOGISH_PART_FUNCTION"
-
-LOGISH_PART_FILENAME=(
-  [name]="filename"
-  [function_name]="logish_part_filename"
-)
-logish_part_filename() {
-  local log_name=${1}
-  local log_color=${2}
-  local filename_name=""
-  if [[ -n $BASH_VERSION ]]; then
-    filename_name="$(basename ${BASH_SOURCE[4]})" 
-  elif [[ -n $ZSH_VERSION ]]; then
-    filename_name="$(basename ${funcfiletrace[5]%:*})"
-  fi
-  echo "${filename_name}"
-}
-LOGISH_add_part "LOGISH_PART_FILENAME"
-
-LOGISH_PART_LINENO=(
-  [name]="lineno"
-  [function_name]="logish_part_lineno"
-)
-logish_part_lineno() {
-  local log_name=${1}
-  local log_color=${2}
-  local lineno=""
-  if [[ -n $BASH_VERSION ]]; then
-    lineno="${BASH_LINENO[3]}"
-  elif [[ -n $ZSH_VERSION ]]; then
-    lineno="${funcfiletrace[5]##*:}"
-  fi
-  echo "${lineno}"
-}
-LOGISH_add_part "LOGISH_PART_LINENO"
-
-LOGISH_PART_MESSAGE=(
-  [name]="message"
-  [function_name]="logish_part_message"
-)
-logish_part_message() {
-  local log_name=${1}
-  local log_color=${2}
-  local message=${@:3}
-  echo "${message}"
-}
-LOGISH_add_part "LOGISH_PART_MESSAGE" 
-
-# --- spinner definition ----------------------------------------------
-
-SPINNER=(
-  [pid]=""
-  [function_start]="spinner_start"
-  [function_end]="spinner_end"
-  [chars]="◐,◓,◑,◒"
-)
-spinner_start() {
-  local steps=( $(LOGISH_split "," ${SPINNER[chars]}) )
-  local t=${#steps[@]}
-  local i=0
-  local n=$((t - 1))
-  
-  trap 'spinner_end; return' SIGINT 
-  trap 'spinner_end; return' SIGHUP SIGTERM
-  
-  printf '  '
-  while true; do
-    echo -en "\033[1D${steps[@]:$i:1}"
-    ((i++)) 
-    if [[ "$i" > "$n" ]]; then 
-      i=0 
-    fi 
-    sleep 0.2 
-  done
-}
-spinner_end() {
-  printf "\033[1D"
-  kill ${SPINNER[pid]} &>/dev/null
-  SPINNER[pid]=""
-}
-
-# --- level definitions ----------------------------------------------
-
-LOGISH_LOG_FATAL=(
-  [code]=100  
-  [name]="FATAL"  
-  [template]="${LOGISH_FATAL_TEMPLATE:-$LOGISH_DEFAULT_TEMPLATE}"  
-  [color]="41"
-) 
-LOGISH_add_level "LOGISH_LOG_FATAL" 
-
-LOGISH_LOG_ERROR=(
-  [code]=200  
-  [name]="ERROR"  
-  [template]="${LOGISH_ERROR_TEMPLATE:-$LOGISH_DEFAULT_TEMPLATE}"  
-  [color]="31"
-) 
-LOGISH_add_level "LOGISH_LOG_ERROR" 
-
-LOGISH_LOG_WARN=(
-  [code]=300   
-  [name]="WARN"   
-  [template]="${LOGISH_WARN_TEMPLATE:-$LOGISH_DEFAULT_TEMPLATE}"   
-  [color]="33"
-) 
-LOGISH_add_level "LOGISH_LOG_WARN" 
-
-LOGISH_LOG_NOTICE=(
-  [code]=400 
-  [name]="NOTICE"
-  [template]="${LOGISH_NOTICE_TEMPLATE:-$LOGISH_DEFAULT_TEMPLATE}" 
-  [color]=33
-) 
-LOGISH_add_level "LOGISH_LOG_NOTICE" 
-
-LOGISH_LOG_INFO=(
-  [code]=500   
-  [name]="INFO"   
-  [template]="${LOGISH_INFO_TEMPLATE:-$LOGISH_DEFAULT_TEMPLATE}"   
-  [color]="37"
-)
-LOGISH_add_level "LOGISH_LOG_INFO" 
-
-LOGISH_LOG_DEBUG=(
-  [code]=600  
-  [name]="DEBUG"  
-  [template]="${LOGISH_DEBUG_TEMPLATE:-$LOGISH_DEFAULT_TEMPLATE}"   
-  [color]="34"
-) 
-LOGISH_add_level "LOGISH_LOG_DEBUG" 
-
-LOGISH_LOG_TRACE=(
-  [code]=700  
-  [name]="TRACE"  
-  [template]="${LOGISH_TRACE_TEMPLATE:-$LOGISH_DEFAULT_TEMPLATE}"   
-  [color]="94"
-)
-LOGISH_add_level "LOGISH_LOG_TRACE"
-
-# --- helper functions ----------------------------------------------
+# --- helper functions -
 
 LOGISH_LOG_COMMAND() {
     local level_name=${1}
@@ -374,3 +362,20 @@ LOGISH_LOG_COMMAND() {
     spinner_end
     echo "[OK]"
 }
+
+# --- add defaults - 
+
+LOGISH_add_level "LOGISH_LOG_FATAL" 
+LOGISH_add_level "LOGISH_LOG_ERROR" 
+LOGISH_add_level "LOGISH_LOG_WARN" 
+LOGISH_add_level "LOGISH_LOG_NOTICE" 
+LOGISH_add_level "LOGISH_LOG_INFO" 
+LOGISH_add_level "LOGISH_LOG_DEBUG" 
+LOGISH_add_level "LOGISH_LOG_TRACE" 
+
+LOGISH_add_part "LOGISH_PART_LEVEL" 
+LOGISH_add_part "LOGISH_PART_TIMESTAMP" 
+LOGISH_add_part "LOGISH_PART_FUNCTION" 
+LOGISH_add_part "LOGISH_PART_FILENAME"
+LOGISH_add_part "LOGISH_PART_LINENO"
+LOGISH_add_part "LOGISH_PART_MESSAGE" 
