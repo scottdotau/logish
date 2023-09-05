@@ -41,7 +41,7 @@ function LOGISH_get_function_args() {
   local arg_string=${2} 
   if [[ -n ${arg_string} ]]; then
     if [[ -n ${BASH_VERSION} ]]; then
-      echo "readarray -t -d \",\" ${var_name} < <(echo \"${arg_string}\")"
+      echo "readarray -t -d \",\" ${var_name} < <(printf \"%s\" \"${arg_string}\")"
     elif [[ -n $ZSH_VERSION ]]; then
       echo "local arg_string=${arg_string}; local ${var_name}=(\"\${(s/,/)arg_string}\")"
     fi
@@ -232,10 +232,43 @@ declare -A PART_MESSAGE=(
 part_message() {
   local log_name=${1}
   local log_color=${2}
-  local message=${3}
+  local message=${@:3}
   echo "${message}"
 }
-LOGISH_add_part "PART_MESSAGE"
+LOGISH_add_part "PART_MESSAGE" 
+
+# --- spinner definition ----------------------------------------------
+
+declare -f spinner
+declare -A SPINNER=(
+  [pid]=""
+  [function_start]="spinner_start"
+  [function_end]="spinner_end"
+  [chars]="◐,◓,◑,◒"
+)
+spinner_start() {
+  eval $(LOGISH_get_function_args "steps" ${SPINNER[chars]})
+  local t=${#steps[@]}
+  local i=0
+  local n=$((t - 1))
+  
+  trap 'printf "\033[5D "; return' SIGINT 
+  trap 'printf "\033[3D "; return' SIGHUP SIGTERM
+  
+  printf "   " 
+  while true; do
+    printf "\033[1D${steps[@]:$i:1}"
+    ((i++)) 
+    if [[ "$i" > "$n" ]]; then 
+      i=0 
+    fi 
+    sleep 0.2 
+  done
+}
+spinner_end() {
+  echo -e "\033[1D  "
+  kill ${SPINNER[pid]}
+}
 
 # --- level definitions ----------------------------------------------
 
@@ -297,31 +330,6 @@ LOGISH_add_level "LOG_TRACE"
 
 # --- helper functions ----------------------------------------------
 
-function WORKING_START() {
-  local symbols=() 
-  symbols[1]=" ◐ " 
-  symbols[2]=" ◓ " 
-  symbols[3]=" ◑ " 
-  symbols[4]=" ◒ "
-  local p=1
-  local n=4
-  
-   #trap 'printf "\033[5D "; return' SIGINT 
-   #trap 'printf "\033[3D "; return' SIGHUP SIGTERM 
-  
-   printf "   " 
-   while true; do 
-     printf "\033[3D${symbols[$p]}" 
-     ((p++)) 
-     if [[ "$p" > "$n" ]]; then 
-       # :nocov: 
-       p=1 
-       # :nocov: 
-     fi 
-     sleep 0.2 
-   done
-}
-
 function WORKING_END() {
   printf "\033[3D "  
 }
@@ -331,14 +339,13 @@ function LOG_COMMAND() {
     local message=${2}
     local command_string=${*:3}
     local converted=$(LOGISH_print_message "${level_name}" ${message})
-    echo -n ${converted}
+    echo -ne ${converted}
     
-    WORKING_START &
+    spinner_start &
+    SPINNER[pid]="${!}"
+    
     eval ${command_string} &>/dev/null &
-    
     local command_pid=$!
     wait $command_pid >/dev/null 
-    
-    WORKING_END
-    echo "[finished ${command_string}]"
+    spinner_end
 }
