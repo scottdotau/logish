@@ -53,7 +53,7 @@ declare -gf spinner_end
 # Helpers
 declare -gf LOGISH_LOG_COMMAND
 
-LOGISH_DEFAULT_TEMPLATE="${LOGISH_DEFAULT_TEMPLATE:-":timestamp: :level: [:function:::lineno:] :message:"}"
+LOGISH_DEFAULT_TEMPLATE="${LOGISH_DEFAULT_TEMPLATE:-":timestamp: :level: [:filename:::lineno:] :message:"}"
 LOGISH_DEFAULT_TIME_FORMAT="${LOGISH_DEFAULT_TIME_FORMAT:-"%I:%M%p"}"
 
 # --- level definitions -
@@ -114,7 +114,7 @@ LOGISH_PART_LEVEL=(
   [name]="level"
   [function_name]="logish_part_level"
   [function_args]="format"
-  [arg_format]="%-15s"
+  [arg_format]="%-8s"
 )
 logish_part_level() {
   local log_name=${1}
@@ -146,10 +146,10 @@ logish_part_function() {
   local log_color=${2}
   local function_name=""
   if [[ -n $BASH_VERSION ]]; then
-    local parts="${#FUNCNAME[@]}"
     function_name="${FUNCNAME[-1]}"
   elif [[ -n $ZSH_VERSION ]]; then
-    function_name="${funcfiletrace[-1]}"
+    local fname=(${(s/:/)funcfiletrace[-1]})
+    function_name="${fname[1]}"
   fi
   echo "${function_name}"
 }
@@ -241,7 +241,7 @@ function LOGISH_split() {
     IFS=',' read -r -A result < <(echo "${string}")
   fi
   
-  echo ${result[*]}
+  echo "${result[*]}"
 }
 
 function LOGISH_get_reference() {
@@ -266,7 +266,7 @@ function LOGISH_get_part_ref() {
   local name=${1}
   local reference=${LOGISH_PARTS[$name]}
   if [[ -n ${reference} ]]; then
-    echo ${reference}
+    echo "${reference}"
   fi
 }
 
@@ -350,8 +350,8 @@ LOGISH_LOG_COMMAND() {
     local level_name=${1}
     local message=${2}
     local command_string=${*:3}
-    local converted=$(LOGISH_print_message "${level_name}" ${message})
-    echo -ne ${converted}
+    local line=$(LOGISH_print_message "${level_name}" ${message})
+    echo -n "${line}"
     
     spinner_start &
     SPINNER[pid]="${!}"
