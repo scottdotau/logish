@@ -3,26 +3,53 @@
 #set -e          # fail on error
 #set -o nounset  # fail on unset variables
 #set -o pipefail # show errors
+#set -v
+readonly LOGISH_APPNAME="LOGISH"
+readonly LOGISH_VERSION=1.0.0
 
 # Guard
 [ -n "${LOGISH_SH+x}" ] && return || readonly LOGISH_SH=1
 
 # Support
 if [[ -z $BASH_VERSION ]] && [[ -z $ZSH_VERSION ]]; then
-    echo "Unsupported"
-    exit 404
+    echo "unsupported"
+    return 1
 fi
+
+# Maps
 
 declare -gA LOGISH_LEVELS=() 
 declare -gA LOGISH_PARTS=()
 
-readonly LOGISH_APPNAME="LOGISH"
-readonly LOGISH_VERSION=1.2.0
+# Default Levels
 
-LOGISH_DEFAULT_TEMPLATE="${LOGISH_DEFAULT_TEMPLATE:-":timestamp: :level: [:filename:::lineno:] :message:"}"
+# Default Parts
+declare -gf part_function
+declare -gf part_timestamp
+declare -gf part_level
+declare -gf part_function
+declare -gf part_filename
+declare -gf part_lineno
+declare -gf part_message
+
+# Default Spinner
+
+LOGISH_DEFAULT_TEMPLATE="${LOGISH_DEFAULT_TEMPLATE:-":timestamp: :level: [:function:::lineno:] :message:"}"
 LOGISH_DEFAULT_TIME_FORMAT="${LOGISH_DEFAULT_TIME_FORMAT:-"%I:%M%p"}"
 
 # --- internal functions ----------------------------------------------
+
+function LOGISH_split() {
+  local delimiter=${1}
+  local string="${@:2}"
+  if [[ -n $BASH_VERSION ]]; then
+    IFS=',' read -r -a result < <(echo "${string}")
+  elif [[ -n $ZSH_VERSION ]]; then
+    IFS=',' read -r -A result < <(echo "${string}")
+  fi
+  
+  echo ${result[*]}
+}
 
 function LOGISH_get_reference() {
   local var_name=$1
@@ -32,18 +59,6 @@ function LOGISH_get_reference() {
     echo "local -n ${var_name}=${reference_variable}"
   elif [[ -n $ZSH_VERSION ]]; then
     echo "local -A ${var_name}=(\"\${(kv@)${reference_variable}}\")"
-  fi
-}
-
-function LOGISH_get_function_args() {
-  local var_name=${1} 
-  local arg_string=${2} 
-  if [[ -n ${arg_string} ]]; then
-    if [[ -n ${BASH_VERSION} ]]; then
-      echo "readarray -t -d \",\" ${var_name} < <(printf \"%s\" \"${arg_string}\")"
-    elif [[ -n $ZSH_VERSION ]]; then
-      echo "local arg_string=${arg_string}; local ${var_name}=(\"\${(s/,/)arg_string}\")"
-    fi
   fi
 }
 
@@ -103,8 +118,8 @@ function LOGISH_convert_message_template() {
     
     if [[ -n ${part_ref} ]]; then
       eval $(LOGISH_get_reference "part" "${part_ref}")
-      eval $(LOGISH_get_function_args "part_args" "${part[function_args]}")
-      
+    
+      local part_args=( $(LOGISH_split "," ${part[function_args]}) )
       for varg in "${part_args[@]}"; do
         [[ -z ${varg} ]] && break
         local found_arg=$(echo "arg_${varg}" | tr -d "\n")
@@ -138,7 +153,6 @@ function LOGISH_print_message() {
 
 # --- part definitions ----------------------------------------------
  
-declare -f part_timestamp
 declare -A PART_TIMESTAMP=(
   [name]="timestamp"
   [function_name]="part_timestamp"
@@ -154,7 +168,6 @@ part_timestamp() {
 }
 LOGISH_add_part "PART_TIMESTAMP"
 
-declare -f part_level
 declare -A PART_LEVEL=(
   [name]="level"
   [function_name]="part_level"
@@ -169,7 +182,6 @@ part_level() {
 }
 LOGISH_add_part "PART_LEVEL"
 
-declare -f part_function
 declare -A PART_FUNCTION=(
   [name]="function"
   [function_name]="part_function"
@@ -179,15 +191,15 @@ part_function() {
   local log_color=${2}
   local function_name=""
   if [[ -n $BASH_VERSION ]]; then
-    function_name="${FUNCNAME[4]}"
+    local parts="${#FUNCNAME[@]}"
+    function_name="${FUNCNAME[-1]}"
   elif [[ -n $ZSH_VERSION ]]; then
-    function_name="${funcstack[4]}"
+    function_name="${funcfiletrace[-1]}"
   fi
   echo "${function_name}"
 }
 LOGISH_add_part "PART_FUNCTION"
 
-declare -f part_filename
 declare -A PART_FILENAME=(
   [name]="filename"
   [function_name]="part_filename"
@@ -205,7 +217,6 @@ part_filename() {
 }
 LOGISH_add_part "PART_FILENAME"
 
-declare -f part_lineno
 declare -A PART_LINENO=(
   [name]="lineno"
   [function_name]="part_lineno"
@@ -223,7 +234,6 @@ part_lineno() {
 }
 LOGISH_add_part "PART_LINENO"
 
-declare -f part_message
 declare -A PART_MESSAGE=(
   [name]="message"
   [function_name]="part_message"
@@ -246,17 +256,19 @@ declare -A SPINNER=(
   [chars]="◐,◓,◑,◒"
 )
 spinner_start() {
-  eval $(LOGISH_get_function_args "steps" ${SPINNER[chars]})
+  local steps=( $(LOGISH_split "," ${SPINNER[chars]}) )
   local t=${#steps[@]}
   local i=0
   local n=$((t - 1))
   
-  trap 'printf "\033[1D "; return' SIGINT 
-  trap 'printf "\033[1D "; return' SIGHUP SIGTERM
+  trap 'spinner_end; return' SIGINT 
+  trap 'spinner_end; return' SIGHUP SIGTERM
   
-  printf "  " 
+  printf '  '
   while true; do
-    printf "\033[1D${steps[@]:$i:1}"
+    local step=${steps[@]:$i:1}
+    #echo "step[${step}]"
+    echo -en "\033[1D${step}"
     ((i++)) 
     if [[ "$i" > "$n" ]]; then 
       i=0 
@@ -265,8 +277,9 @@ spinner_start() {
   done
 }
 spinner_end() {
-  echo -en "\033[1D"
-  kill ${SPINNER[pid]}
+  printf "\033[1D"
+  kill ${SPINNER[pid]} &>/dev/null
+  SPINNER[pid]=""
 }
 
 # --- level definitions ----------------------------------------------
@@ -343,5 +356,5 @@ function LOG_COMMAND() {
     wait ${!} >/dev/null
 
     spinner_end
-    echo -n "[OK]"
+    echo "[OK]"
 }
