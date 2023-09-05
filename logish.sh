@@ -10,9 +10,8 @@
 # Support
 if [[ -z $BASH_VERSION ]] && [[ -z $ZSH_VERSION ]]; then
     echo "Unsupported"
-    return 404
+    exit 404
 fi
-
 
 declare -gA LOGISH_LEVELS=() 
 declare -gA LOGISH_PARTS=()
@@ -340,7 +339,7 @@ function LOG_COMMAND() {
     spinner_start &
     SPINNER[pid]="${!}"
     
-    eval ${command_string} >/dev/null &
+    eval ${command_string} &>/dev/null &
     wait ${!} >/dev/null
 
     spinner_end
