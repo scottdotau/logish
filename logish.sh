@@ -252,10 +252,10 @@ spinner_start() {
   local i=0
   local n=$((t - 1))
   
-  trap 'printf "\033[5D "; return' SIGINT 
-  trap 'printf "\033[3D "; return' SIGHUP SIGTERM
+  trap 'printf "\033[1D "; return' SIGINT 
+  trap 'printf "\033[1D "; return' SIGHUP SIGTERM
   
-  printf "   " 
+  printf "  " 
   while true; do
     printf "\033[1D${steps[@]:$i:1}"
     ((i++)) 
@@ -266,7 +266,7 @@ spinner_start() {
   done
 }
 spinner_end() {
-  echo -e "\033[1D  "
+  echo -en "\033[1D"
   kill ${SPINNER[pid]}
 }
 
@@ -330,10 +330,6 @@ LOGISH_add_level "LOG_TRACE"
 
 # --- helper functions ----------------------------------------------
 
-function WORKING_END() {
-  printf "\033[3D "  
-}
-
 function LOG_COMMAND() {
     local level_name=${1}
     local message=${2}
@@ -344,8 +340,9 @@ function LOG_COMMAND() {
     spinner_start &
     SPINNER[pid]="${!}"
     
-    eval ${command_string} &>/dev/null &
-    local command_pid=$!
-    wait $command_pid >/dev/null 
+    eval ${command_string} >/dev/null &
+    wait ${!} >/dev/null
+
     spinner_end
+    echo "[OK]"
 }
