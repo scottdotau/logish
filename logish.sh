@@ -22,17 +22,36 @@ declare -gA LOGISH_LEVELS=()
 declare -gA LOGISH_PARTS=()
 
 # Default Levels
+declare -gA LOGISH_LOG_TRACE
+declare -gA LOGISH_LOG_DEBUG
+declare -gA LOGISH_LOG_INFO
+declare -gA LOGISH_LOG_NOTICE
+declare -gA LOGISH_LOG_WARN
+declare -gA LOGISH_LOG_ERROR
+declare -gA LOGISH_LOG_FATAL
 
 # Default Parts
-declare -gf part_function
-declare -gf part_timestamp
-declare -gf part_level
-declare -gf part_function
-declare -gf part_filename
-declare -gf part_lineno
-declare -gf part_message
+declare -gA LOGISH_PART_FUNCTION
+declare -gA LOGISH_PART_TIMESTAMP
+declare -gA LOGISH_PART_LEVEL
+declare -gA LOGISH_PART_FILENAME
+declare -gA LOGISH_PART_LINENO
+declare -gA LOGISH_PART_MESSAGE
+
+declare -gf logish_part_function
+declare -gf logish_part_timestamp
+declare -gf logish_part_level
+declare -gf logish_part_filename
+declare -gf logish_part_lineno
+declare -gf logish_part_message
 
 # Default Spinner
+declare -gA SPINNER
+declare -gf spinner_start
+declare -gf spinner_end
+
+# Helpers
+declare -gf LOGISH_LOG_COMMAND
 
 LOGISH_DEFAULT_TEMPLATE="${LOGISH_DEFAULT_TEMPLATE:-":timestamp: :level: [:function:::lineno:] :message:"}"
 LOGISH_DEFAULT_TIME_FORMAT="${LOGISH_DEFAULT_TIME_FORMAT:-"%I:%M%p"}"
@@ -153,40 +172,40 @@ function LOGISH_print_message() {
 
 # --- part definitions ----------------------------------------------
  
-declare -A PART_TIMESTAMP=(
+LOGISH_PART_TIMESTAMP=(
   [name]="timestamp"
-  [function_name]="part_timestamp"
+  [function_name]="logish_part_timestamp"
   [function_args]="format"
   [arg_format]="${LOGISH_DEFAULT_TIME_FORMAT}"
 )
-part_timestamp() {
+logish_part_timestamp() {
   local log_name=${1}
   local log_color=${2}
   local time_format=${3}
   local result=$(date +"${time_format}")
   echo "${result}"
 }
-LOGISH_add_part "PART_TIMESTAMP"
+LOGISH_add_part "LOGISH_PART_TIMESTAMP"
 
-declare -A PART_LEVEL=(
+LOGISH_PART_LEVEL=(
   [name]="level"
-  [function_name]="part_level"
+  [function_name]="logish_part_level"
   [function_args]="format"
   [arg_format]="%-8s"
 )
-part_level() {
+logish_part_level() {
   local log_name=${1}
   local log_color=${2}
   local level_format=${3}
   echo "\e[1;${log_color}m$(printf ${level_format} ${log_name})\e[0m"
 }
-LOGISH_add_part "PART_LEVEL"
+LOGISH_add_part "LOGISH_PART_LEVEL"
 
-declare -A PART_FUNCTION=(
+LOGISH_PART_FUNCTION=(
   [name]="function"
-  [function_name]="part_function"
+  [function_name]="logish_part_function"
 )
-part_function() {
+logish_part_function() {
   local log_name=${1}
   local log_color=${2}
   local function_name=""
@@ -198,13 +217,13 @@ part_function() {
   fi
   echo "${function_name}"
 }
-LOGISH_add_part "PART_FUNCTION"
+LOGISH_add_part "LOGISH_PART_FUNCTION"
 
-declare -A PART_FILENAME=(
+LOGISH_PART_FILENAME=(
   [name]="filename"
-  [function_name]="part_filename"
+  [function_name]="logish_part_filename"
 )
-part_filename() {
+logish_part_filename() {
   local log_name=${1}
   local log_color=${2}
   local filename_name=""
@@ -215,13 +234,13 @@ part_filename() {
   fi
   echo "${filename_name}"
 }
-LOGISH_add_part "PART_FILENAME"
+LOGISH_add_part "LOGISH_PART_FILENAME"
 
-declare -A PART_LINENO=(
+LOGISH_PART_LINENO=(
   [name]="lineno"
-  [function_name]="part_lineno"
+  [function_name]="logish_part_lineno"
 )
-part_lineno() {
+logish_part_lineno() {
   local log_name=${1}
   local log_color=${2}
   local lineno=""
@@ -232,24 +251,23 @@ part_lineno() {
   fi
   echo "${lineno}"
 }
-LOGISH_add_part "PART_LINENO"
+LOGISH_add_part "LOGISH_PART_LINENO"
 
-declare -A PART_MESSAGE=(
+LOGISH_PART_MESSAGE=(
   [name]="message"
-  [function_name]="part_message"
+  [function_name]="logish_part_message"
 )
-part_message() {
+logish_part_message() {
   local log_name=${1}
   local log_color=${2}
   local message=${@:3}
   echo "${message}"
 }
-LOGISH_add_part "PART_MESSAGE" 
+LOGISH_add_part "LOGISH_PART_MESSAGE" 
 
 # --- spinner definition ----------------------------------------------
 
-declare -f spinner
-declare -A SPINNER=(
+SPINNER=(
   [pid]=""
   [function_start]="spinner_start"
   [function_end]="spinner_end"
@@ -266,9 +284,7 @@ spinner_start() {
   
   printf '  '
   while true; do
-    local step=${steps[@]:$i:1}
-    #echo "step[${step}]"
-    echo -en "\033[1D${step}"
+    echo -en "\033[1D${steps[@]:$i:1}"
     ((i++)) 
     if [[ "$i" > "$n" ]]; then 
       i=0 
@@ -284,65 +300,65 @@ spinner_end() {
 
 # --- level definitions ----------------------------------------------
 
-declare -A LOG_FATAL=(
+LOGISH_LOG_FATAL=(
   [code]=100  
   [name]="FATAL"  
   [template]="${LOGISH_FATAL_TEMPLATE:-$LOGISH_DEFAULT_TEMPLATE}"  
   [color]="41"
 ) 
-LOGISH_add_level "LOG_FATAL" 
+LOGISH_add_level "LOGISH_LOG_FATAL" 
 
-declare -A LOG_ERROR=(
+LOGISH_LOG_ERROR=(
   [code]=200  
   [name]="ERROR"  
   [template]="${LOGISH_ERROR_TEMPLATE:-$LOGISH_DEFAULT_TEMPLATE}"  
   [color]="31"
 ) 
-LOGISH_add_level "LOG_ERROR" 
+LOGISH_add_level "LOGISH_LOG_ERROR" 
 
-declare -A LOG_WARN=(
+LOGISH_LOG_WARN=(
   [code]=300   
   [name]="WARN"   
   [template]="${LOGISH_WARN_TEMPLATE:-$LOGISH_DEFAULT_TEMPLATE}"   
   [color]="33"
 ) 
-LOGISH_add_level "LOG_WARN" 
+LOGISH_add_level "LOGISH_LOG_WARN" 
 
-declare -A LOG_NOTICE=(
+LOGISH_LOG_NOTICE=(
   [code]=400 
   [name]="NOTICE"
   [template]="${LOGISH_NOTICE_TEMPLATE:-$LOGISH_DEFAULT_TEMPLATE}" 
   [color]=33
 ) 
-LOGISH_add_level "LOG_NOTICE" 
+LOGISH_add_level "LOGISH_LOG_NOTICE" 
 
-declare -A LOG_INFO=(
+LOGISH_LOG_INFO=(
   [code]=500   
   [name]="INFO"   
   [template]="${LOGISH_INFO_TEMPLATE:-$LOGISH_DEFAULT_TEMPLATE}"   
   [color]="37"
 )
-LOGISH_add_level "LOG_INFO" 
+LOGISH_add_level "LOGISH_LOG_INFO" 
 
-declare -A LOG_DEBUG=(
+LOGISH_LOG_DEBUG=(
   [code]=600  
   [name]="DEBUG"  
   [template]="${LOGISH_DEBUG_TEMPLATE:-$LOGISH_DEFAULT_TEMPLATE}"   
   [color]="34"
 ) 
-LOGISH_add_level "LOG_DEBUG" 
+LOGISH_add_level "LOGISH_LOG_DEBUG" 
 
-declare -A LOG_TRACE=(
+LOGISH_LOG_TRACE=(
   [code]=700  
   [name]="TRACE"  
   [template]="${LOGISH_TRACE_TEMPLATE:-$LOGISH_DEFAULT_TEMPLATE}"   
   [color]="94"
 )
-LOGISH_add_level "LOG_TRACE"
+LOGISH_add_level "LOGISH_LOG_TRACE"
 
 # --- helper functions ----------------------------------------------
 
-function LOG_COMMAND() {
+LOGISH_LOG_COMMAND() {
     local level_name=${1}
     local message=${2}
     local command_string=${*:3}
