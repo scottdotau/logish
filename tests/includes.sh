@@ -1,2 +1,2 @@
 #! /usr/bin/env sh
-source "../nlog.sh"
+source "../logish.sh"

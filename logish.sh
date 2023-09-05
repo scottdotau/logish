@@ -161,12 +161,13 @@ declare -A PART_LEVEL=(
   [name]="level"
   [function_name]="part_level"
   [function_args]="format"
-  [arg_format]="%s"
+  [arg_format]="%-8s"
 )
 part_level() {
   local log_name=${1}
   local log_color=${2}
-  echo "\e[1;${log_color}m$(printf '%-8s' ${log_name})\e[0m"
+  local level_format=${3}
+  echo "\e[1;${log_color}m$(printf ${level_format} ${log_name})\e[0m"
 }
 LOGISH_add_part "PART_LEVEL"
 

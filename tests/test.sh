@@ -1,5 +1,5 @@
 #! /usr/bin/env sh
-echo -e "\n########## BASH" 
+echo "\n########## BASH" 
 bash "test.bash.sh"
-echo -e "\n########## ZSH" 
+echo "\n########## ZSH" 
 zsh "test.zsh.sh"
