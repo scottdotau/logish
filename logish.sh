@@ -343,5 +343,5 @@ function LOG_COMMAND() {
     wait ${!} >/dev/null
 
     spinner_end
-    echo "[OK]"
+    echo -n "[OK]"
 }
