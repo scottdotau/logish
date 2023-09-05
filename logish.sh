@@ -23,7 +23,7 @@ readonly LOGISH_VERSION=1.2.0
 LOGISH_DEFAULT_TEMPLATE="${LOGISH_DEFAULT_TEMPLATE:-":timestamp: :level: [:filename:::lineno:] :message:"}"
 LOGISH_DEFAULT_TIME_FORMAT="${LOGISH_DEFAULT_TIME_FORMAT:-"%I:%M%p"}"
 
-# --- functions ----------------------------------------------
+# --- internal functions ----------------------------------------------
 
 function LOGISH_get_reference() {
   local var_name=$1
@@ -123,16 +123,15 @@ function LOGISH_convert_message_template() {
 }
 
 function LOGISH_print_message() {
-  local name=${1}; shift
+  local level_name=${1}; shift
+  local level_ref=$(LOGISH_get_level_ref ${level_name})
   local message=${*:-}
-  local reference=$(LOGISH_get_level_ref ${name})
   
-  if [[ -z ${reference} ]]; then
-    echo "No level: $name"
+  if [[ -z ${level_ref} ]]; then
     return 1
   fi
   
-  local line=$(LOGISH_convert_message_template "${name}" \
+  local line=$(LOGISH_convert_message_template "${level_name}" \
     "${message}")
     
   echo -e "${line}"
@@ -295,3 +294,51 @@ declare -A LOG_TRACE=(
   [color]="94"
 )
 LOGISH_add_level "LOG_TRACE"
+
+# --- helper functions ----------------------------------------------
+
+function WORKING_START() {
+  local symbols=() 
+  symbols[1]=" ◐ " 
+  symbols[2]=" ◓ " 
+  symbols[3]=" ◑ " 
+  symbols[4]=" ◒ "
+  local p=1
+  local n=4
+  
+   #trap 'printf "\033[5D "; return' SIGINT 
+   #trap 'printf "\033[3D "; return' SIGHUP SIGTERM 
+  
+   printf "   " 
+   while true; do 
+     printf "\033[3D${symbols[$p]}" 
+     ((p++)) 
+     if [[ "$p" > "$n" ]]; then 
+       # :nocov: 
+       p=1 
+       # :nocov: 
+     fi 
+     sleep 0.2 
+   done
+}
+
+function WORKING_END() {
+  printf "\033[3D "  
+}
+
+function LOG_COMMAND() {
+    local level_name=${1}
+    local message=${2}
+    local command_string=${*:3}
+    local converted=$(LOGISH_print_message "${level_name}" ${message})
+    echo -n ${converted}
+    
+    WORKING_START &
+    eval ${command_string} &>/dev/null &
+    
+    local command_pid=$!
+    wait $command_pid >/dev/null 
+    
+    WORKING_END
+    echo "[finished ${command_string}]"
+}
