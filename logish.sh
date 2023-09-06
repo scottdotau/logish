@@ -3,21 +3,18 @@
 #set -e          # fail on error
 #set -o nounset  # fail on unset variables
 #set -o pipefail # show errors
-#set -v
-readonly LOGISH_APPNAME="LOGISH"
-readonly LOGISH_VERSION=1.0.0
+#set -vx         # debugging
 
-# Guard
-[ -n "${LOGISH_SH+x}" ] && return || readonly LOGISH_SH=1
+readonly LOGISH_APPNAME="LOGISH"
+readonly LOGISH_VERSION="1.0.0"
 
 # Support
-if [[ -z $BASH_VERSION ]] && [[ -z $ZSH_VERSION ]]; then
-    echo "unsupported"
-    return 1
-fi
+[[ -z $BASH_VERSION && -z $ZSH_VERSION ]] && return 1
+
+LOGISH_DEFAULT_TEMPLATE="${LOGISH_DEFAULT_TEMPLATE:-":timestamp: :level: [:filename:::lineno:] :message:"}"
+LOGISH_DEFAULT_TIME_FORMAT="${LOGISH_DEFAULT_TIME_FORMAT:-"%I:%M%p"}"
 
 # Maps
-
 declare -gA LOGISH_LEVELS=() 
 declare -gA LOGISH_PARTS=()
 
@@ -38,23 +35,8 @@ declare -gA LOGISH_PART_FILENAME
 declare -gA LOGISH_PART_LINENO
 declare -gA LOGISH_PART_MESSAGE
 
-declare -gf logish_part_level
-declare -gf logish_part_timestamp
-declare -gf logish_part_function
-declare -gf logish_part_filename
-declare -gf logish_part_lineno
-declare -gf logish_part_message
-
 # Default Spinner
-declare -gA SPINNER
-declare -gf spinner_start
-declare -gf spinner_end
-
-# Helpers
-declare -gf LOGISH_LOG_COMMAND
-
-LOGISH_DEFAULT_TEMPLATE="${LOGISH_DEFAULT_TEMPLATE:-":timestamp: :level: [:filename:::lineno:] :message:"}"
-LOGISH_DEFAULT_TIME_FORMAT="${LOGISH_DEFAULT_TIME_FORMAT:-"%I:%M%p"}"
+declare -gA LOGISH_SPINNER
 
 # --- level definitions -
 
@@ -199,20 +181,20 @@ logish_part_message() {
 
 # --- spinner definition -
 
-SPINNER=(
+LOGISH_SPINNER=(
   [pid]=""
-  [function_start]="spinner_start"
-  [function_end]="spinner_end"
+  [function_start]="logish_spinner_start"
+  [function_end]="logish_spinner_end"
   [chars]="◐,◓,◑,◒"
 )
-spinner_start() {
-  local steps=( $(LOGISH_split "," ${SPINNER[chars]}) )
+logish_spinner_start() {
+  local steps=( $(LOGISH_split "," ${LOGISH_SPINNER[chars]}) )
   local t=${#steps[@]}
   local i=0
   local n=$((t - 1))
   
-  trap 'spinner_end; return' SIGINT 
-  trap 'spinner_end; return' SIGHUP SIGTERM
+  trap 'logish_spinner_end; return' SIGINT 
+  trap 'logish_spinner_end; return' SIGHUP SIGTERM
   
   printf '  '
   while true; do
@@ -224,10 +206,10 @@ spinner_start() {
     sleep 0.2 
   done
 }
-spinner_end() {
+logish_spinner_end() {
   printf "\033[1D"
-  kill ${SPINNER[pid]} &>/dev/null
-  SPINNER[pid]=""
+  [[ -n ${LOGISH_SPINNER[pid]} ]] && kill ${LOGISH_SPINNER[pid]} &>/dev/null
+  LOGISH_SPINNER[pid]=""
 } 
 
 # --- internal functions -
@@ -241,7 +223,7 @@ function LOGISH_split() {
     IFS=',' read -r -A result < <(echo "${string}")
   fi
   
-  echo "${result[*]}"
+  echo "${result[@]}"
 }
 
 function LOGISH_get_reference() {
@@ -263,34 +245,30 @@ function LOGISH_add_part() {
 }
 
 function LOGISH_get_part_ref() {  
-  local name=${1}
-  local reference=${LOGISH_PARTS[$name]}
-  if [[ -n ${reference} ]]; then
-    echo "${reference}"
-  fi
+  local part_name=${@:1}
+  local part_ref=${LOGISH_PARTS[$part_name]}
+  [[ -n ${part_ref} ]] && echo "${part_ref}"
 }
 
 function LOGISH_add_level() {
-  local level_ref=${1}
+  local level_ref=${@:1}
   eval $(LOGISH_get_reference "level" ${level_ref}) 
   
-  declare -gf ${level[name]}
   eval "${level[name]}() { LOGISH_print_message ${level[name]} \"\${@}\"; }"
+  declare -g ${level[name]}
   
   LOGISH_LEVELS+=(["${level[name]}"]="${level_ref}")
 }
 
 function LOGISH_get_level_ref() {
-  local name=${1}
-  local reference=${LOGISH_LEVELS[$name]}
-  if [[ -n ${reference} ]]; then
-    echo ${reference}
-  fi
+  local level_name=${@:1}
+  local level_ref=${LOGISH_LEVELS[$level_name]}
+  [[ -n ${level_ref} ]] && echo "${level_ref}"
 } 
 
 function LOGISH_convert_message_template() {
-  local level_ref=$(LOGISH_get_level_ref ${1}); shift
-  local message=${*:-}
+  local level_ref=$(LOGISH_get_level_ref ${1});
+  local message=${*:2}
   eval $(LOGISH_get_reference "level" ${level_ref}) 
   
   local converted=${level[template]}
@@ -347,20 +325,24 @@ function LOGISH_print_message() {
 # --- helper functions -
 
 LOGISH_LOG_COMMAND() {
-    local level_name=${1}
-    local message=${2}
-    local command_string=${*:3}
+    # allow multiple commands passed through as strings, loop through
+    local level_name=${@:1:1}
+    local message=${@:2:1}
+    local command_string=( $(LOGISH_split " " ${*:3}) )
+    local command=${command_string[@]:0:1}
+    local command_args=( ${command_string[@]:1} )
+    
     local line=$(LOGISH_print_message "${level_name}" ${message})
     echo -n "${line}"
     
-    spinner_start &
-    SPINNER[pid]="${!}"
+    logish_spinner_start &
+    LOGISH_SPINNER[pid]="${!}"
     
-    eval ${command_string} &>/dev/null &
+    eval $command ${command_args[*]} &
     wait ${!} >/dev/null
 
-    spinner_end
-    echo "[OK]"
+    logish_spinner_end
+    echo "[${?} OK]"
 }
 
 # --- add defaults - 
