@@ -337,8 +337,8 @@ LOGISH_LOG_COMMAND() {
     logish_spinner_start &
     LOGISH_SPINNER[pid]="${!}"
     
-    eval $command ${command_args[*]} >/dev/null &
-    wait ${!} >/dev/null
+    eval $command ${command_args[*]} &>/dev/null &
+    wait ${!} &>/dev/null
 
     logish_spinner_end
     echo "[${?} OK]"
