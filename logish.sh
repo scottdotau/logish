@@ -188,7 +188,7 @@ LOGISH_SPINNER=(
   [chars]="◐,◓,◑,◒"
 )
 logish_spinner_start() {
-  local steps=( $(LOGISH_split "," ${LOGISH_SPINNER[chars]}) )
+  local steps=( $(__split "," ${LOGISH_SPINNER[chars]}) )
   local t=${#steps[@]}
   local i=0
   local n=$((t - 1))
@@ -214,21 +214,20 @@ logish_spinner_end() {
 
 # --- internal functions -
 
-function LOGISH_split() {
-  local delimiter=${1}
+function __split() {
+  local delimiter=${@:1:1}
   local string="${@:2}"
   if [[ -n $BASH_VERSION ]]; then
-    IFS=',' read -r -a result < <(echo "${string}")
+    IFS="${delimiter}" read -r -a result < <(echo "${string}")
   elif [[ -n $ZSH_VERSION ]]; then
-    IFS=',' read -r -A result < <(echo "${string}")
+    IFS="${delimiter}" read -r -A result < <(echo "${string}")
   fi
-  
   echo "${result[@]}"
 }
 
-function LOGISH_get_reference() {
-  local var_name=$1
-  local reference_variable=$2
+function __get_reference() {
+  local var_name=${@:1:1}
+  local reference_variable=${@:2:1}
   
   if [[ -n $BASH_VERSION ]]; then
     echo "local -n ${var_name}=${reference_variable}"
@@ -239,7 +238,7 @@ function LOGISH_get_reference() {
 
 function LOGISH_add_part() {
   local reference=${1}
-  eval $(LOGISH_get_reference "part" ${reference})
+  eval $(__get_reference "part" ${reference})
   
   LOGISH_PARTS+=(["${part[name]}"]="${reference}") 
 }
@@ -252,7 +251,7 @@ function LOGISH_get_part_ref() {
 
 function LOGISH_add_level() {
   local level_ref=${@:1}
-  eval $(LOGISH_get_reference "level" ${level_ref}) 
+  eval $(__get_reference "level" ${level_ref}) 
   
   eval "${level[name]}() { LOGISH_print_message ${level[name]} \"\${@}\"; }"
   declare -g ${level[name]}
@@ -269,7 +268,7 @@ function LOGISH_get_level_ref() {
 function LOGISH_convert_message_template() {
   local level_ref=$(LOGISH_get_level_ref ${1});
   local message=${*:2}
-  eval $(LOGISH_get_reference "level" ${level_ref}) 
+  eval $(__get_reference "level" ${level_ref}) 
   
   local converted=${level[template]}
   while [[ "${converted}" =~ :[a-z]+: ]]; do
@@ -288,9 +287,9 @@ function LOGISH_convert_message_template() {
     local part_ref=$(LOGISH_get_part_ref "${part_name}")
     
     if [[ -n ${part_ref} ]]; then
-      eval $(LOGISH_get_reference "part" "${part_ref}")
+      eval $(__get_reference "part" "${part_ref}")
     
-      local part_args=( $(LOGISH_split "," ${part[function_args]}) )
+      local part_args=( $(__split "," ${part[function_args]}) )
       for varg in "${part_args[@]}"; do
         [[ -z ${varg} ]] && break
         local found_arg=$(echo "arg_${varg}" | tr -d "\n")
@@ -328,7 +327,7 @@ LOGISH_LOG_COMMAND() {
     # allow multiple commands passed through as strings, loop through
     local level_name=${@:1:1}
     local message=${@:2:1}
-    local command_string=( $(LOGISH_split " " ${*:3}) )
+    local command_string=( $(__split " " ${*:3}) )
     local command=${command_string[@]:0:1}
     local command_args=( ${command_string[@]:1} )
     
@@ -338,7 +337,7 @@ LOGISH_LOG_COMMAND() {
     logish_spinner_start &
     LOGISH_SPINNER[pid]="${!}"
     
-    eval $command ${command_args[*]} &
+    eval $command ${command_args[*]} >/dev/null &
     wait ${!} >/dev/null
 
     logish_spinner_end
